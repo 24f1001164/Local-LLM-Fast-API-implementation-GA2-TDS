@@ -13,8 +13,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 class InvoiceRequest(BaseModel):
     text: str
+
 
 class InvoiceResponse(BaseModel):
     vendor: str
@@ -41,17 +43,17 @@ def extract(req: InvoiceRequest):
     # -----------------------
     vendor = ""
 
-    patterns = [
+    vendor_patterns = [
         r"Vendor[:\s]+(.+)",
         r"Supplier[:\s]+(.+)",
         r"Bill From[:\s]+(.+)",
         r"From[:\s]+(.+)"
     ]
 
-    for p in patterns:
-        m = re.search(p, text, re.IGNORECASE)
-        if m:
-            vendor = m.group(1).split("\n")[0].strip()
+    for pattern in vendor_patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            vendor = match.group(1).split("\n")[0].strip()
             break
 
     # -----------------------
@@ -59,54 +61,59 @@ def extract(req: InvoiceRequest):
     # -----------------------
     currency = "USD"
 
-    m = re.search(r"\b(USD|EUR|GBP)\b", text, re.IGNORECASE)
-
-    if m:
-        currency = m.group(1).upper()
+    match = re.search(r"\b(USD|EUR|GBP)\b", text, re.IGNORECASE)
+    if match:
+        currency = match.group(1).upper()
 
     # -----------------------
     # Date
     # -----------------------
     date = ""
 
-    m = re.search(r"(2026-\d{2}-\d{2})", text)
-
-    if m:
-        date = m.group(1)
+    match = re.search(r"(2026-\d{2}-\d{2})", text)
+    if match:
+        date = match.group(1)
 
     # -----------------------
-# Amount
-# -----------------------
-amount = 0.0
+    # Amount
+    # -----------------------
+    amount = 0.0
 
-# Try common invoice labels first
-amount_patterns = [
-    r"Total\s*Due[:\s\$€£]*([0-9]+(?:\.[0-9]{1,2})?)",
-    r"Amount\s*Due[:\s\$€£]*([0-9]+(?:\.[0-9]{1,2})?)",
-    r"Balance\s*Due[:\s\$€£]*([0-9]+(?:\.[0-9]{1,2})?)",
-    r"Grand\s*Total[:\s\$€£]*([0-9]+(?:\.[0-9]{1,2})?)",
-    r"Invoice\s*Total[:\s\$€£]*([0-9]+(?:\.[0-9]{1,2})?)",
-    r"Total[:\s\$€£]*([0-9]+(?:\.[0-9]{1,2})?)",
-]
+    amount_patterns = [
+        r"Total\s*Due[:\s\$€£]*([0-9]+(?:\.[0-9]{1,2})?)",
+        r"Amount\s*Due[:\s\$€£]*([0-9]+(?:\.[0-9]{1,2})?)",
+        r"Balance\s*Due[:\s\$€£]*([0-9]+(?:\.[0-9]{1,2})?)",
+        r"Grand\s*Total[:\s\$€£]*([0-9]+(?:\.[0-9]{1,2})?)",
+        r"Invoice\s*Total[:\s\$€£]*([0-9]+(?:\.[0-9]{1,2})?)",
+        r"Total[:\s\$€£]*([0-9]+(?:\.[0-9]{1,2})?)",
+        r"([0-9]+(?:\.[0-9]{1,2})?)\s*(USD|EUR|GBP)"
+    ]
 
-for p in amount_patterns:
-    m = re.search(p, text, re.IGNORECASE)
-    if m:
-        amount = float(m.group(1))
-        break
+    for pattern in amount_patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            amount = float(match.group(1))
+            break
 
-# Fallback: use the largest monetary-looking number
-if amount == 0.0:
-    numbers = re.findall(r"\b\d+(?:\.\d{1,2})?\b", text)
+    # Fallback: choose the largest monetary-looking number
+    if amount == 0.0:
+        numbers = re.findall(r"\b\d+(?:\.\d{1,2})?\b", text)
 
-    candidates = []
+        candidates = []
 
-    for n in numbers:
-        value = float(n)
+        for n in numbers:
+            value = float(n)
 
-        # Ignore year and small numbers that are likely dates
-        if value != 2026 and value >= 50:
-            candidates.append(value)
+            # Ignore year values and small date/day values
+            if value != 2026 and value >= 50:
+                candidates.append(value)
 
-    if candidates:
-        amount = max(candidates)
+        if candidates:
+            amount = max(candidates)
+
+    return InvoiceResponse(
+        vendor=vendor,
+        amount=amount,
+        currency=currency,
+        date=date
+    )
