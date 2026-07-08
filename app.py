@@ -75,26 +75,38 @@ def extract(req: InvoiceRequest):
         date = m.group(1)
 
     # -----------------------
-    # Amount
-    # -----------------------
-    amount = 0.0
+# Amount
+# -----------------------
+amount = 0.0
 
-    amount_patterns = [
-        r"Total Due[:\s]*([0-9]+(?:\.[0-9]+)?)",
-        r"Amount Due[:\s]*([0-9]+(?:\.[0-9]+)?)",
-        r"Total[:\s]*([0-9]+(?:\.[0-9]+)?)",
-        r"([0-9]+(?:\.[0-9]+)?)\s*(USD|EUR|GBP)"
-    ]
+# Try common invoice labels first
+amount_patterns = [
+    r"Total\s*Due[:\s\$€£]*([0-9]+(?:\.[0-9]{1,2})?)",
+    r"Amount\s*Due[:\s\$€£]*([0-9]+(?:\.[0-9]{1,2})?)",
+    r"Balance\s*Due[:\s\$€£]*([0-9]+(?:\.[0-9]{1,2})?)",
+    r"Grand\s*Total[:\s\$€£]*([0-9]+(?:\.[0-9]{1,2})?)",
+    r"Invoice\s*Total[:\s\$€£]*([0-9]+(?:\.[0-9]{1,2})?)",
+    r"Total[:\s\$€£]*([0-9]+(?:\.[0-9]{1,2})?)",
+]
 
-    for p in amount_patterns:
-        m = re.search(p, text, re.IGNORECASE)
-        if m:
-            amount = float(m.group(1))
-            break
+for p in amount_patterns:
+    m = re.search(p, text, re.IGNORECASE)
+    if m:
+        amount = float(m.group(1))
+        break
 
-    return InvoiceResponse(
-        vendor=vendor,
-        amount=amount,
-        currency=currency,
-        date=date
-    )
+# Fallback: use the largest monetary-looking number
+if amount == 0.0:
+    numbers = re.findall(r"\b\d+(?:\.\d{1,2})?\b", text)
+
+    candidates = []
+
+    for n in numbers:
+        value = float(n)
+
+        # Ignore year and small numbers that are likely dates
+        if value != 2026 and value >= 50:
+            candidates.append(value)
+
+    if candidates:
+        amount = max(candidates)
